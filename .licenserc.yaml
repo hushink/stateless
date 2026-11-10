@@ -1,0 +1,25 @@
+header:
+  license:
+    spdx-id: Apache-2.0
+    copyright-year: '2026'
+    copyright-owner: hushink
+
+  paths:
+    - '**/*.go'
+
+  paths-ignore:
+    - 'dist'
+    - 'dependencies/licenses'
+    - '**/*.md'
+    - 'LICENSE'
+    - 'NOTICE'
+    - '**/testdata/**'
+    - '**/vendor/**'
+    - '**/dependencies/**'
+
+  comment: on-failure
+
+  # If you don't want to check dependencies' license compatibility, remove the following part
+dependency:
+  files:
+    - go.mod            # If this is a Go project.
