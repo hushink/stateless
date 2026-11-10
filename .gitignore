@@ -45,11 +45,18 @@ go.work.sum
 !.editorconfig
 
 !README.md
+!README.zh-CN.md
 !README_zh.md
 !LICENSE
 !Makefile
 !.licenserc.yaml
 !.golangci.yaml
+
+# GitHub Actions workflows
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
 
 # Generated files to ignore
 coverage.out
