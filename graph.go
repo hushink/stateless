@@ -167,7 +167,7 @@ func (sm *stateMachine[S, E]) generateDotGraph() string {
 	// Initial-state entry point (UML-style invisible point).
 	initialStr := fmt.Sprintf("%v", sm.initialState)
 	sb.WriteString("    __initial__ [shape=point, width=0.2, label=\"\"];\n")
-	sb.WriteString(fmt.Sprintf("    __initial__ -> %q;\n", initialStr))
+	fmt.Fprintf(&sb, "    __initial__ -> %q;\n", initialStr)
 	sb.WriteString("\n")
 
 	// Collect hierarchy relationships.
@@ -194,7 +194,7 @@ func (sm *stateMachine[S, E]) generateDotGraph() string {
 		_, isParent := pc[state]
 		if !isChild && !isParent {
 			// Top-level isolated state: emit the node directly.
-			sb.WriteString(fmt.Sprintf("    %q;\n", state))
+			fmt.Fprintf(&sb, "    %q;\n", state)
 		}
 	}
 
@@ -203,7 +203,7 @@ func (sm *stateMachine[S, E]) generateDotGraph() string {
 	// Emit all transition edges.
 	edges := sm.collectGraphEdges()
 	for _, e := range edges {
-		sb.WriteString(fmt.Sprintf("    %q -> %q [label=%q];\n", e.source, e.target, e.label))
+		fmt.Fprintf(&sb, "    %q -> %q [label=%q];\n", e.source, e.target, e.label)
 	}
 
 	sb.WriteString("}\n")
@@ -214,19 +214,19 @@ func (sm *stateMachine[S, E]) generateDotGraph() string {
 // writeDotCluster recursively writes a DOT subgraph cluster (supporting nested
 // hierarchy levels).
 func (sm *stateMachine[S, E]) writeDotCluster(sb *strings.Builder, parent string, children []string, pc map[string][]string, indent string) {
-	sb.WriteString(fmt.Sprintf("%ssubgraph %q {\n", indent, "cluster_"+parent))
-	sb.WriteString(fmt.Sprintf("%s    label=%q;\n", indent, parent))
+	fmt.Fprintf(sb, "%ssubgraph %q {\n", indent, "cluster_"+parent)
+	fmt.Fprintf(sb, "%s    label=%q;\n", indent, parent)
 
 	for _, child := range children {
 		// If the child has children of its own, recurse into a nested cluster.
 		if grandChildren, ok := pc[child]; ok {
 			sm.writeDotCluster(sb, child, grandChildren, pc, indent+"    ")
 		} else {
-			sb.WriteString(fmt.Sprintf("%s    %q;\n", indent, child))
+			fmt.Fprintf(sb, "%s    %q;\n", indent, child)
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("%s}\n", indent))
+	fmt.Fprintf(sb, "%s}\n", indent)
 }
 
 // generateMermaidGraph generates the Mermaid state diagram representation.
@@ -249,7 +249,7 @@ func (sm *stateMachine[S, E]) generateMermaidGraph() string {
 
 	// Initial-state entry.
 	initialStr := fmt.Sprintf("%v", sm.initialState)
-	sb.WriteString(fmt.Sprintf("    [*] --> %s\n", ids[initialStr]))
+	fmt.Fprintf(&sb, "    [*] --> %s\n", ids[initialStr])
 
 	// Collect hierarchy relationships.
 	pc := sm.parentChildren()
@@ -264,15 +264,15 @@ func (sm *stateMachine[S, E]) generateMermaidGraph() string {
 		if children, ok := pc[state]; ok {
 			sm.writeMermaidState(&sb, state, children, pc, ids, "    ")
 		} else {
-			sb.WriteString(fmt.Sprintf("    %s\n", mermaidStateDeclaration(state, ids[state])))
+			fmt.Fprintf(&sb, "    %s\n", mermaidStateDeclaration(state, ids[state]))
 		}
 	}
 
 	// Emit all transition edges (referencing states by safe ID).
 	edges := sm.collectGraphEdges()
 	for _, e := range edges {
-		sb.WriteString(fmt.Sprintf("    %s --> %s : %s\n",
-			ids[e.source], ids[e.target], sanitizeMermaidLabel(e.label)))
+		fmt.Fprintf(&sb, "    %s --> %s : %s\n",
+			ids[e.source], ids[e.target], sanitizeMermaidLabel(e.label))
 	}
 
 	return sb.String()
@@ -280,7 +280,7 @@ func (sm *stateMachine[S, E]) generateMermaidGraph() string {
 
 // writeMermaidState recursively writes a nested Mermaid state block.
 func (sm *stateMachine[S, E]) writeMermaidState(sb *strings.Builder, parent string, children []string, pc map[string][]string, ids map[string]string, indent string) {
-	sb.WriteString(fmt.Sprintf("%s%s {\n", indent, mermaidStateDeclaration(parent, ids[parent])))
+	fmt.Fprintf(sb, "%s%s {\n", indent, mermaidStateDeclaration(parent, ids[parent]))
 
 	// Declare every child state inside the parent block first (including
 	// recursively nested blocks).
@@ -288,7 +288,7 @@ func (sm *stateMachine[S, E]) writeMermaidState(sb *strings.Builder, parent stri
 		if grandChildren, ok := pc[child]; ok {
 			sm.writeMermaidState(sb, child, grandChildren, pc, ids, indent+"    ")
 		} else {
-			sb.WriteString(fmt.Sprintf("%s    %s\n", indent, mermaidStateDeclaration(child, ids[child])))
+			fmt.Fprintf(sb, "%s    %s\n", indent, mermaidStateDeclaration(child, ids[child]))
 		}
 	}
 
@@ -297,12 +297,12 @@ func (sm *stateMachine[S, E]) writeMermaidState(sb *strings.Builder, parent stri
 		parentStr := fmt.Sprintf("%v", repr.state)
 		if parentStr == parent && repr.initialTransitionTarget != nil {
 			targetStr := fmt.Sprintf("%v", *repr.initialTransitionTarget)
-			sb.WriteString(fmt.Sprintf("%s    [*] --> %s\n", indent, ids[targetStr]))
+			fmt.Fprintf(sb, "%s    [*] --> %s\n", indent, ids[targetStr])
 			break
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("%s}\n", indent))
+	fmt.Fprintf(sb, "%s}\n", indent)
 }
 
 // mermaidIDs returns a mapping from state display names to unique safe Mermaid
