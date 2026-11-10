@@ -14,7 +14,11 @@
 
 package stateless
 
-import "fmt"
+import (
+	"fmt"
+	"log/slog"
+	"os"
+)
 
 // Builder defines the public interface for building a state machine.
 // Every configuration method returns either Builder or StateConfigurator to
@@ -36,6 +40,16 @@ type Builder[S, E comparable] interface {
 	// WithListener registers a global listener that observes transition lifecycle
 	// events. It may be called multiple times to register multiple listeners.
 	WithListener(l Listener[S, E]) Builder[S, E]
+	// WithDebug enables or disables built-in debug logging. When enabled, the
+	// state machine logs transition decisions at debug level to stderr using
+	// log/slog. Debug logging is disabled by default and is intended for
+	// development and tests, not production.
+	WithDebug(enabled bool) Builder[S, E]
+	// WithDebugLogger sets a custom slog logger for debug output. Pass nil to
+	// disable debug logging. The logger's own level controls whether debug
+	// messages are emitted, so a production logger configured at Info level
+	// produces no debug output.
+	WithDebugLogger(logger *slog.Logger) Builder[S, E]
 	// Build terminates the configuration chain, validates the configuration, and
 	// returns a read-only StateMachine. Validation failures return an error
 	// wrapping the ErrInvalidConfiguration sentinel.
@@ -60,6 +74,7 @@ type builder[S, E comparable] struct {
 	configuredStates  map[S]bool                       // States explicitly configured via Configure
 	listeners         []Listener[S, E]                 // Global listener list
 	substateRelations map[S]S                          // child -> parent substate mapping
+	debugLogger       *slog.Logger                     // Optional debug logger (nil means disabled)
 }
 
 // getOrCreate returns the stateRepresentation for the given state, creating it if needed.
@@ -106,6 +121,26 @@ func (b *builder[S, E]) InitialTransition(state, initialChild S) Builder[S, E] {
 // WithListener registers a global listener.
 func (b *builder[S, E]) WithListener(l Listener[S, E]) Builder[S, E] {
 	b.listeners = append(b.listeners, l)
+	return b
+}
+
+// WithDebug enables or disables built-in debug logging. When enabled, logs are
+// written at debug level to stderr with a text handler.
+func (b *builder[S, E]) WithDebug(enabled bool) Builder[S, E] {
+	if !enabled {
+		b.debugLogger = nil
+		return b
+	}
+	b.debugLogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	return b
+}
+
+// WithDebugLogger sets a custom slog logger for debug output. Passing nil
+// disables debug logging.
+func (b *builder[S, E]) WithDebugLogger(logger *slog.Logger) Builder[S, E] {
+	b.debugLogger = logger
 	return b
 }
 
@@ -251,6 +286,7 @@ func (b *builder[S, E]) Build() (StateMachine[S, E], error) {
 		initialState: b.initialState,
 		config:       frozenConfig,
 		listeners:    frozenListeners,
+		debugLogger:  b.debugLogger,
 	}, nil
 }
 

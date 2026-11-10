@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 
@@ -75,6 +76,9 @@ func (e Event) String() string {
 // ---------------------------------------------------------------------------
 
 func main() {
+	debug := flag.Bool("debug", false, "enable debug logging")
+	flag.Parse()
+
 	// ======================================================================
 	// Step 1: Build the state machine with the fluent Builder API
 	// ======================================================================
@@ -109,6 +113,7 @@ func main() {
 			return nil
 		}).
 		Done().
+		WithDebug(*debug).
 		Build()
 	if err != nil {
 		log.Fatalf("构建状态机失败: %v", err)

@@ -18,6 +18,7 @@ A type-safe, stateless state machine library for Go, inspired by the core design
 - **Multiple transition kinds** — External, internal, reentry, dynamic, guarded, and ignored
 - **Build-time validation** — `Build()` detects cycles, invalid initial transitions, and nil guards/selectors/actions/listeners to prevent runtime panics
 - **Lifecycle listeners** — Observe transitioning, transitioned, and unhandled-trigger events
+- **Opt-in debug logging** — Built-in `slog` debug logs for development and tests, fully disabled by default
 - **Graph export** — Generate Graphviz DOT and Mermaid state diagrams from a configured machine
 - **Zero dependencies** — Standard library only
 
@@ -101,6 +102,8 @@ Configure(state S) StateConfigurator[S, E]
 SubstateOf(child, parent S) Builder[S, E]
 InitialTransition(state, initialChild S) Builder[S, E]
 WithListener(l Listener[S, E]) Builder[S, E]
+WithDebug(enabled bool) Builder[S, E]
+WithDebugLogger(logger *slog.Logger) Builder[S, E]
 Build() (StateMachine[S, E], error)
 ```
 
@@ -110,6 +113,7 @@ Notes:
 - An `InitialTransition` target must be a descendant of the declaring state; otherwise `Build()` returns `ErrInvalidConfiguration`.
 - `Build()` does not mutate the `Builder`, so it can be called repeatedly; each call returns an independently frozen `StateMachine`.
 - `Build()` validates nil guards, nil dynamic selectors, nil entry/exit actions, and nil listeners, and detects substate and initial-transition cycles.
+- Debug logging is disabled by default. `WithDebug(true)` logs transition decisions to stderr at debug level; `WithDebugLogger` accepts a custom `*slog.Logger`.
 
 ### StateConfigurator Methods
 
@@ -249,6 +253,36 @@ sm, _ := stateless.NewBuilder[MyState, MyEvent](Initial).
 	Build()
 ```
 
+## Debug Logging
+
+Debug logging is **disabled by default** and is intended for development and tests. Enable it with `WithDebug(true)` to log transition decisions to stderr at debug level:
+
+```go
+sm, err := stateless.NewBuilder[State, Event](Locked).
+	// ... state configuration ...
+	WithDebug(true).
+	Build()
+```
+
+For custom output, supply a `*slog.Logger`. Its own level controls whether debug messages are emitted:
+
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+sm, err := stateless.NewBuilder[State, Event](Locked).
+	// ... state configuration ...
+	WithDebugLogger(logger).
+	Build()
+```
+
+In production, omit these options or pass a logger configured at `slog.LevelInfo` or above; the machine then emits no debug output. Logged events include `fire`, `unhandled trigger`, `transition`, `exit`, `enter`, `run transition action`, and `transition completed`. Argument values are never logged — only the argument count.
+
+All examples accept a `-debug` flag that enables these logs:
+
+```bash
+go run ./examples/turnstile -debug
+```
+
 ## Graph Export
 
 Generate a visual representation of the state machine:
@@ -277,12 +311,14 @@ The `examples/` directory contains three complete runnable programs:
 | [`order`](examples/order/main.go) | Order workflow — demonstrates `PermitIf` guards, `SubstateOf` hierarchical states, `OnEntryFrom`, `IsInState`, and `Listener` |
 | [`ticket`](examples/ticket/main.go) | Ticket system — demonstrates `Fire` with `args`, guard validation over `Transition.Args`, and per-event `OnEntryFrom` actions |
 
-Run any example:
+Run any example (add `-debug` to include the library's debug logs):
 
 ```bash
 go run ./examples/turnstile
 go run ./examples/order
 go run ./examples/ticket
+
+go run ./examples/turnstile -debug
 ```
 
 ## Design Philosophy

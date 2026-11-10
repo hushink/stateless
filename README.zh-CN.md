@@ -18,6 +18,7 @@
 - **多种转换类型** — 外部、内部、重入、动态、条件和忽略
 - **构建期校验** — `Build()` 检测环、非法初始转换和 nil 守卫/选择器/动作/监听器，避免运行时 panic
 - **生命周期监听器** — 观察转换中、已转换和未处理触发事件
+- **可选调试日志** — 基于 `slog` 的内置调试日志，用于开发与测试，生产默认完全关闭
 - **图导出** — 从配置的状态机生成 Graphviz DOT 和 Mermaid 状态图
 - **零依赖** — 仅使用 Go 标准库
 
@@ -101,6 +102,8 @@ Configure(state S) StateConfigurator[S, E]
 SubstateOf(child, parent S) Builder[S, E]
 InitialTransition(state, initialChild S) Builder[S, E]
 WithListener(l Listener[S, E]) Builder[S, E]
+WithDebug(enabled bool) Builder[S, E]
+WithDebugLogger(logger *slog.Logger) Builder[S, E]
 Build() (StateMachine[S, E], error)
 ```
 
@@ -110,6 +113,7 @@ Build() (StateMachine[S, E], error)
 - `InitialTransition` 的目标必须是 `state` 的后代状态，否则 `Build()` 返回 `ErrInvalidConfiguration`。
 - `Build()` 不会修改 `Builder`，可安全地重复调用；每次返回独立冻结的 `StateMachine`。
 - `Build()` 会校验 nil 守卫、nil 动态选择器、nil 进入/退出动作与 nil 监听器，并检测子状态环与初始转换环。
+- 调试日志默认关闭。`WithDebug(true)` 以 debug 级别向 stderr 输出转换决策；`WithDebugLogger` 可传入自定义 `*slog.Logger`。
 
 ### StateConfigurator 方法
 
@@ -249,6 +253,36 @@ sm, _ := stateless.NewBuilder[MyState, MyEvent](Initial).
 	Build()
 ```
 
+## 调试日志
+
+调试日志**默认关闭**，仅用于开发与测试。通过 `WithDebug(true)` 以 debug 级别向 stderr 输出转换决策：
+
+```go
+sm, err := stateless.NewBuilder[State, Event](Locked).
+	// ... 状态配置 ...
+	WithDebug(true).
+	Build()
+```
+
+如需自定义输出，可传入 `*slog.Logger`；日志级别由该 logger 自身控制：
+
+```go
+logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+sm, err := stateless.NewBuilder[State, Event](Locked).
+	// ... 状态配置 ...
+	WithDebugLogger(logger).
+	Build()
+```
+
+生产环境请省略这些选项，或传入级别为 `slog.LevelInfo` 及以上的 logger，此时不会产生任何调试输出。记录的日志事件包括 `fire`、`unhandled trigger`、`transition`、`exit`、`enter`、`run transition action` 和 `transition completed`。日志不会记录参数值，只记录参数个数。
+
+所有示例都支持 `-debug` 开关：
+
+```bash
+go run ./examples/turnstile -debug
+```
+
 ## 图导出
 
 生成状态机的可视化表示：
@@ -277,12 +311,14 @@ DOT 输出支持层次化集群嵌套、UML 样式初始状态入口点和守卫
 | [`order`](examples/order/main.go) | 订单工作流 — 演示 `PermitIf` 守卫、`SubstateOf` 层次化状态、`OnEntryFrom`、`IsInState` 和 `Listener` |
 | [`ticket`](examples/ticket/main.go) | 工单系统 — 演示带 `args` 参数传递的 `Fire`、`Transition.Args` 上的守卫验证，以及 `OnEntryFrom` 每个事件的动作 |
 
-运行任何示例：
+运行任何示例（添加 `-debug` 可同时输出库的调试日志）：
 
 ```bash
 go run ./examples/turnstile
 go run ./examples/order
 go run ./examples/ticket
+
+go run ./examples/turnstile -debug
 ```
 
 ## 设计理念

@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 
@@ -139,6 +140,9 @@ func fireEvent(ctx context.Context, sm stateless.StateMachine[OrderState, OrderE
 // ---------------------------------------------------------------------------
 
 func main() {
+	debug := flag.Bool("debug", false, "enable debug logging")
+	flag.Parse()
+
 	// Simulated order amount (used by the guard condition).
 	orderAmount := 199.0
 
@@ -215,6 +219,8 @@ func main() {
 		Done().
 		// -- Register the global listener --
 		WithListener(&OrderListener{}).
+		// -- Enable built-in debug logging when -debug is set --
+		WithDebug(*debug).
 		Build()
 	if err != nil {
 		log.Fatalf("构建状态机失败: %v", err)

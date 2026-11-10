@@ -29,6 +29,7 @@
 //   - Entry/exit actions: custom actions on state entry and exit, optionally filtered by event
 //   - Context-aware queries: CanFireContext and PermittedTriggersContext expose request context to guards
 //   - Build-time validation: Build detects cycles, invalid initial transitions, and nil guards/selectors/actions/listeners
+//   - Opt-in debug logging: WithDebug/WithDebugLogger expose slog-based transition diagnostics, disabled by default
 //   - Graph export: Graphviz DOT and Mermaid state diagrams
 //   - Zero external dependencies: standard library only
 package stateless

@@ -14,7 +14,10 @@
 
 package stateless
 
-import "context"
+import (
+	"context"
+	"log/slog"
+)
 
 // StateMachine defines the public interface of an immutable, stateless state
 // machine. After Builder.Build(), all configuration is frozen, so the interface
@@ -55,10 +58,21 @@ type stateMachine[S, E comparable] struct {
 	initialState S                                // Initial state
 	config       map[S]*stateRepresentation[S, E] // Configuration of all states
 	listeners    []Listener[S, E]                 // Global listener list
+	debugLogger  *slog.Logger                     // Optional debug logger (nil means disabled)
+}
+
+// debugf emits a debug-level log message when debug logging is enabled.
+func (sm *stateMachine[S, E]) debugf(ctx context.Context, msg string, args ...any) {
+	if sm.debugLogger == nil {
+		return
+	}
+	sm.debugLogger.DebugContext(ctx, msg, args...)
 }
 
 // Fire triggers an event from the given current state and returns the new state.
 func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args ...any) (S, error) {
+	sm.debugf(ctx, "fire", "state", state, "event", event, "argc", len(args))
+
 	// 1. Fetch the stateRepresentation for the current state.
 	repr, ok := sm.config[state]
 	if !ok {
@@ -93,6 +107,9 @@ func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args .
 		IsReentry:   !result.isInternal && finalState == state,
 	}
 
+	sm.debugf(ctx, "transition", "source", state, "event", event,
+		"destination", finalState, "internal", result.isInternal, "reentry", transition.IsReentry)
+
 	// 6. Notify every listener via OnTransitioning.
 	for _, l := range sm.listeners {
 		l.OnTransitioning(ctx, transition)
@@ -101,11 +118,13 @@ func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args .
 	// 7. Internal transition: run only the transition action, no entry/exit.
 	if result.isInternal {
 		if result.action != nil {
+			sm.debugf(ctx, "run transition action", "state", state, "event", event)
 			if err := result.action(ctx, transition); err != nil {
 				return state, err
 			}
 		}
 		sm.notifyTransitioned(ctx, transition)
+		sm.debugf(ctx, "transition completed", "source", state, "event", event, "state", state)
 		return state, nil
 	}
 
@@ -114,20 +133,24 @@ func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args .
 	if result.destination == state {
 		// 8a. The target is the current state: exit and re-enter it.
 		//     Permit(event, sameState) and PermitReentry behave identically here.
+		sm.debugf(ctx, "exit", "state", state)
 		if err := repr.executeExitActions(ctx, transition); err != nil {
 			return state, err
 		}
 		if result.action != nil {
+			sm.debugf(ctx, "run transition action", "state", state, "event", event)
 			if err := result.action(ctx, transition); err != nil {
 				return state, err
 			}
 		}
+		sm.debugf(ctx, "enter", "state", state)
 		if err := repr.executeEntryActions(ctx, transition); err != nil {
 			return state, err
 		}
 		// If the current state is composite, continue entering its initial
 		// substate chain.
 		for _, entryRepr := range sm.collectEntryPath(finalState, repr) {
+			sm.debugf(ctx, "enter", "state", entryRepr.state)
 			if err := entryRepr.executeEntryActions(ctx, transition); err != nil {
 				return state, err
 			}
@@ -140,6 +163,7 @@ func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args .
 
 		// 8c. Run exit actions: from the current state up to (excluding) the LCA.
 		for _, exitRepr := range sm.collectExitPath(state, lca) {
+			sm.debugf(ctx, "exit", "state", exitRepr.state)
 			if err := exitRepr.executeExitActions(ctx, transition); err != nil {
 				return state, err
 			}
@@ -147,6 +171,7 @@ func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args .
 
 		// 8d. Run the transition action, if any.
 		if result.action != nil {
+			sm.debugf(ctx, "run transition action", "state", state, "event", event)
 			if err := result.action(ctx, transition); err != nil {
 				return state, err
 			}
@@ -157,6 +182,7 @@ func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args .
 		//     entered, every intermediate state on the initial substate chain
 		//     runs its entry action in parent-to-child order.
 		for _, entryRepr := range sm.collectEntryPath(finalState, lca) {
+			sm.debugf(ctx, "enter", "state", entryRepr.state)
 			if err := entryRepr.executeEntryActions(ctx, transition); err != nil {
 				return state, err
 			}
@@ -165,12 +191,14 @@ func (sm *stateMachine[S, E]) Fire(ctx context.Context, state S, event E, args .
 
 	// 9. Notify every listener via OnTransitioned.
 	sm.notifyTransitioned(ctx, transition)
+	sm.debugf(ctx, "transition completed", "source", state, "event", event, "state", finalState)
 
 	return finalState, nil
 }
 
 // notifyUnhandledTrigger notifies every listener that an event was not handled.
 func (sm *stateMachine[S, E]) notifyUnhandledTrigger(ctx context.Context, state S, event E) {
+	sm.debugf(ctx, "unhandled trigger", "state", state, "event", event)
 	for _, l := range sm.listeners {
 		l.OnUnhandledTrigger(ctx, state, event)
 	}
@@ -193,9 +221,12 @@ func (sm *stateMachine[S, E]) CanFire(state S, event E, args ...any) bool {
 func (sm *stateMachine[S, E]) CanFireContext(ctx context.Context, state S, event E, args ...any) bool {
 	repr, ok := sm.config[state]
 	if !ok {
+		sm.debugf(ctx, "can fire", "state", state, "event", event, "permitted", false)
 		return false
 	}
-	return repr.canHandle(ctx, state, event, args...)
+	permitted := repr.canHandle(ctx, state, event, args...)
+	sm.debugf(ctx, "can fire", "state", state, "event", event, "permitted", permitted)
+	return permitted
 }
 
 // PermittedTriggers returns every event that can be triggered from the given state.
@@ -210,7 +241,9 @@ func (sm *stateMachine[S, E]) PermittedTriggersContext(ctx context.Context, stat
 	if !ok {
 		return nil
 	}
-	return repr.permittedTriggers(ctx, state, args...)
+	events := repr.permittedTriggers(ctx, state, args...)
+	sm.debugf(ctx, "permitted triggers", "state", state, "events", events)
+	return events
 }
 
 // InitialState returns the machine's initial state. If the initial state has an

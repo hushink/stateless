@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 
@@ -112,6 +113,9 @@ func fireEvent(ctx context.Context, sm stateless.StateMachine[State, Event], sta
 // ---------------------------------------------------------------------------
 
 func main() {
+	debug := flag.Bool("debug", false, "enable debug logging")
+	flag.Parse()
+
 	// ======================================================================
 	// Step 1: Build the ticket state machine with the fluent Builder API
 	// ======================================================================
@@ -178,6 +182,7 @@ func main() {
 			return nil
 		}).
 		Done().
+		WithDebug(*debug).
 		Build()
 	if err != nil {
 		log.Fatalf("构建状态机失败: %v", err)
